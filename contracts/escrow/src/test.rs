@@ -7483,7 +7483,7 @@ fn amendment_released_milestone_amount_change_rejected() {
     assert_eq!(
         s.escrow
             .try_propose_amendment(&id, &s.client, &vec![&s.env, 40 * U, 50 * U]),
-        Err(Ok(EscrowError::CannotAmendReleasedMilestone))
+        Err(Ok(EscrowError::MilestoneAlreadyReleased))
     );
     // Changing only the unreleased milestone is fine.
     let nonce = s
@@ -7533,7 +7533,7 @@ fn amendment_stale_nonce_rejected() {
         .propose_amendment(&id, &s.client, &vec![&s.env, 40 * U, 60 * U]);
     assert_eq!(
         s.escrow.try_accept_amendment(&id, &s.freelancer, &(first + 1)),
-        Err(Ok(EscrowError::AmendmentMismatch))
+        Err(Ok(EscrowError::SettlementMismatch))
     );
     // A newer proposal makes the first nonce stale.
     let second = s
@@ -7542,7 +7542,7 @@ fn amendment_stale_nonce_rejected() {
     assert_eq!(second, first + 1);
     assert_eq!(
         s.escrow.try_accept_amendment(&id, &s.freelancer, &first),
-        Err(Ok(EscrowError::AmendmentMismatch))
+        Err(Ok(EscrowError::SettlementMismatch))
     );
     s.escrow.accept_amendment(&id, &s.freelancer, &second);
     assert_eq!(

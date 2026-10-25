@@ -145,8 +145,8 @@ pub enum EscrowError {
     SettlementMismatch = 48,
     FeeTooHigh = 49,
     InvalidSchedule = 50,
-    AmendmentMismatch = 51,
-    CannotAmendReleasedMilestone = 52,
+    // NOTE: the Soroban contract spec caps an error enum at 50 cases, so new
+    // failure modes reuse the closest existing code (append-only numbering).
 }
 
 #[contracttype]
@@ -1249,7 +1249,7 @@ fn check_amendment(env: &Env, c: &EscrowContract, new_amounts: &Vec<i128>) -> Re
         let amount = new_amounts.get(index).unwrap();
         if m.released {
             if amount != m.amount {
-                return Err(EscrowError::CannotAmendReleasedMilestone);
+                return Err(EscrowError::MilestoneAlreadyReleased);
             }
         } else {
             if amount <= 0 {
@@ -3772,7 +3772,7 @@ impl Escrow {
 
     /// A party proposes new amounts for the escrow's milestones (same count;
     /// released milestones must keep their amount, else
-    /// `CannotAmendReleasedMilestone`). Only on `Created` / `Funded` escrows
+    /// `MilestoneAlreadyReleased`). Only on `Created` / `Funded` escrows
     /// (not streams). Replaces any pending amendment and returns its nonce.
     /// Emits `("amend_p", id) -> (proposer, nonce)`.
     pub fn propose_amendment(
@@ -3822,7 +3822,7 @@ impl Escrow {
     }
 
     /// The other party accepts the pending amendment by its `nonce`
-    /// (`AmendmentMismatch` if none is pending or the nonce differs;
+    /// (`SettlementMismatch` if none is pending or the nonce differs;
     /// self-acceptance is `Unauthorized`). Applies the new amounts and total:
     /// funds above the new total are refunded to the client (pro-rata to
     /// funders); a larger total returns the escrow to `Created` until topped up.
@@ -3840,12 +3840,12 @@ impl Escrow {
             .storage()
             .persistent()
             .get(&key)
-            .ok_or(EscrowError::AmendmentMismatch)?;
+            .ok_or(EscrowError::SettlementMismatch)?;
         if acceptor == amendment.proposer {
             return Err(EscrowError::Unauthorized);
         }
         if amendment.nonce != nonce {
-            return Err(EscrowError::AmendmentMismatch);
+            return Err(EscrowError::SettlementMismatch);
         }
         if !matches!(c.status, ContractStatus::Created | ContractStatus::Funded) {
             return Err(EscrowError::InvalidStatus);

@@ -50,8 +50,8 @@ Machine-readable details are in [deployments/testnet.json](deployments/testnet.j
 | `resolve_dispute(caller, id, freelancer_bps, bond_to_opener)` | admin or Resolver | Split the held balance; the freelancer share follows the team split (records dispute win/loss outcomes based on 5,000 bps threshold); the resolver cannot be the escrow's client or freelancer; the dispute bond is never part of the split — it returns to the opener when `bond_to_opener`, otherwise goes to the counterparty (panel settlements return it to the opener only if the split favours them) |
 | `set_panel(members, threshold)` | admin | Replace the arbiter panel (1 <= threshold <= len <= 7, unique members, else `InvalidPanel` (`31`)); emits `("panel",) -> (len, threshold)` |
 | `vote_resolution(member, id, freelancer_bps)` | panel member | Vote a split on a disputed escrow; re-votes replace earlier ones, parties cannot vote, only current members are tallied. When `threshold` members agree the escrow settles like `resolve_dispute` and one `("vote", id) -> (member, bps)` event per counted vote is emitted |
-| `propose_amendment(id, proposer, new_amounts) -> u32` | client or freelancer | Propose new amounts for the existing milestones (same count, released milestones unchanged else `CannotAmendReleasedMilestone` (`52`)); returns the nonce. Emits `("amend_p", id) -> (proposer, nonce)` |
-| `accept_amendment(id, acceptor, nonce)` | the other party | Apply it (`AmendmentMismatch` (`51`) for a missing/stale nonce): excess funding is refunded to the client, a larger total returns the escrow to `Created` until topped up. Emits `("amended", id) -> (old_total, new_total, refunded)` |
+| `propose_amendment(id, proposer, new_amounts) -> u32` | client or freelancer | Propose new amounts for the existing milestones (same count, released milestones unchanged else `MilestoneAlreadyReleased` (`12`)); returns the nonce. Emits `("amend_p", id) -> (proposer, nonce)` |
+| `accept_amendment(id, acceptor, nonce)` | the other party | Apply it (`SettlementMismatch` (`48`) for a missing/stale nonce): excess funding is refunded to the client, a larger total returns the escrow to `Created` until topped up. Emits `("amended", id) -> (old_total, new_total, refunded)` |
 | `get_amendment(id)` | - | Pending `Amendment { proposer, new_amounts, nonce }` |
 | `propose_change_order(id, amounts)` | client | Propose extra milestones for a `Created`/`Funded`/`Completed` escrow (`existing + new <= 20`, else `InvalidMilestones`) |
 | `accept_change_order(id) -> (u32, i128)` | freelancer | Append the proposed milestones, grow `total_amount` and reopen the escrow as `Created` (needs funding; a fresh funding window starts); emits `("chg_ord", id) -> (added_count, added_total)`. A rating already issued stays issued, so `issue_reputation` remains blocked for that escrow |
@@ -227,15 +227,13 @@ Bonus payments reuse the escrow's existing validation errors: a missing escrow `
 | 45 | `InvalidAdmin` | `propose_admin` with the current admin |
 | 46 | `NoPendingAdmin` | `accept_admin` / `cancel_admin_proposal` without a nomination |
 | 47 | `EmergencyExitNotAvailable` | `emergency_withdraw` while unpaused or before the pause delay elapsed |
-| 48 | `SettlementMismatch` | `accept_settlement` self-accept, without a proposal, or with a different amount |
+| 48 | `SettlementMismatch` | `accept_settlement` self-accept, without a proposal, or with a different amount; `accept_amendment` without a pending amendment or with a stale nonce |
 | 49 | `FeeTooHigh` | `set_fee` above `MAX_FEE_BPS` |
 | 50 | `InvalidSchedule` | `create_stream` with `start >= end` or a duration under 1 hour |
-| 51 | `AmendmentMismatch` | `accept_amendment` without a pending amendment or with a stale nonce |
-| 52 | `CannotAmendReleasedMilestone` | `propose_amendment` / `accept_amendment` changing a released milestone |
 
 Constants: `MIN_MILESTONE_AMOUNT = 1_000_000` (0.1 token at 7 decimals), `MIN_REPUTATION_VALUE = 10_000_000` (1 token at 7 decimals; ratings are weighted by the released amount and dust jobs cannot be rated — sybil resistance comes from this value threshold, not counterparty graph analysis, so clients who are also freelancers of the same counterparty are not blocked), `MAX_ESCROW_TOTAL = 10^18` stroops, `MAX_MILESTONES = 20`.
 
-Error codes are **append-only** and never renumbered — the frontend and backend map directly on them.
+Error codes are **append-only** and never renumbered — the frontend and backend map directly on them. The Soroban contract spec allows at most 50 error cases, which `EscrowError` has reached; newer failure modes reuse the closest existing code (e.g. amendments use `MilestoneAlreadyReleased` and `SettlementMismatch`).
 
 ## Build and test
 
